@@ -1,0 +1,367 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  serverless
+  Sample SAM Template for serverless
+Parameters:
+  AppBucketName:
+    Type: String
+    Description: 'REQUIRED: Unique S3 bucket name to use for the app.'
+    Default: syndicateapp
+
+Resources:
+  AuthApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'POST, GET, PATCH'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+  # Video2AudioFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     PackageType: Image
+  #     # CodeUri: functions/video2audio/
+  #     # Handler: app.lambda_handler
+  #     # Runtime: python3.8
+  #     # Layers:
+  #     #   - !Ref FFMpegLambdaLayer
+  #     MemorySize: 3008
+  #     EphemeralStorage:
+  #       Size: 10240
+  #     Architectures:
+  #       - x86_64
+  #     Timeout: 900
+  #     Policies:
+  #       - S3FullAccessPolicy:
+  #           BucketName: !Ref AppBucketName
+  #       - Statement:
+  #           - Effect: Allow
+  #             Action:
+  #               - 'execute-api:ManageConnections'
+  #             Resource:
+  #               - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SyndicateWebSocket}/*'
+
+  #   Metadata:
+  #     DockerBuildArgs:
+  #       credentials: /usr/local/credentials.json
+  #     DockerTag: python3.8
+  #     DockerContext: ./
+  #     Dockerfile: functions/video2audio/Dockerfile
+  # FFMpegLambdaLayer:
+  #   Type: AWS::Serverless::LayerVersion
+  #   Properties:
+  #     LayerName: ffmpeg-lambda-layer
+  #     Description: Dependencies for ffmpeg
+  #     ContentUri: layers/ffmpeg
+
+  WSConnManagementFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/websockets/
+      Handler: app.lambda_handler
+      Runtime: python3.8
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      Architectures:
+        - x86_64
+      Timeout: 900
+      Policies:
+        - S3FullAccessPolicy:
+            BucketName: !Ref AppBucketName
+        - LambdaInvokePolicy:
+            FunctionName: !Ref VideoExportFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref VideoUploadFunction
+      Environment:
+        Variables:
+          BucketName: !Ref AppBucketName
+          VideoExportFunctionName: !Ref VideoExportFunction
+          VideoUploadFunctionName: !Ref VideoUploadFunction
+
+  VideoExportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      Architectures:
+        - x86_64
+      Timeout: 900
+      Policies:
+        - S3FullAccessPolicy:
+            BucketName: !Ref AppBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'execute-api:ManageConnections'
+              Resource:
+                - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SyndicateWebSocket}/*'
+        # - SQSPollerPolicy:
+        #     QueueName: !GetAtt SimpleQueue.QueueName
+      Environment:
+        Variables:
+          BucketName: !Ref AppBucketName
+      # Events:
+      #   ExportVideo:
+      #     Type: SQS
+      #     Properties:
+      #       Queue: !GetAtt SimpleQueue.Arn
+      #       BatchSize: 10
+    Metadata:
+      DockerTag: python3.8
+      DockerContext: ./
+      Dockerfile: functions/videoexport/Dockerfile
+
+  VideoUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      Architectures:
+        - x86_64
+      Timeout: 900
+      Policies:
+        - S3FullAccessPolicy:
+            BucketName: !Ref AppBucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'execute-api:ManageConnections'
+              Resource:
+                - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SyndicateWebSocket}/*'
+        # - SQSPollerPolicy:
+        #     QueueName: !GetAtt SimpleQueue.QueueName
+      Environment:
+        Variables:
+          BucketName: !Ref AppBucketName
+      # Events:
+      #   ExportVideo:
+      #     Type: SQS
+      #     Properties:
+      #       Queue: !GetAtt SimpleQueue.Arn
+      #       BatchSize: 10
+    Metadata:
+      DockerBuildArgs:
+        credentials: /usr/local/credentials.json
+      DockerTag: python3.8
+      DockerContext: ./
+      Dockerfile: functions/audio2srt/Dockerfile
+
+  SyndicateWebSocket:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: SyndicateWebSocket
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: '$request.body.action'
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: ConnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref ConnectInteg
+  ConnectInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      Description: Connect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WSConnManagementFunction.Arn}/invocations
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DisconnectInteg
+  DisconnectInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      Description: Disconnect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WSConnManagementFunction.Arn}/invocations
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      RouteKey: $default
+      AuthorizationType: NONE
+      OperationName: DefaultRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DefaultInteg
+  DefaultInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      Description: Default Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WSConnManagementFunction.Arn}/invocations
+  ExportVideoRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      RouteKey: exportVideo
+      AuthorizationType: NONE
+      OperationName: ExportVideoRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref ExportVideoInteg
+  ExportVideoInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      Description: ExportVideo Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WSConnManagementFunction.Arn}/invocations
+  UploadVideoRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      RouteKey: uploadVideo
+      AuthorizationType: NONE
+      OperationName: UploadVideoRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref UploadVideoInteg
+  UploadVideoInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+      Description: UploadVideo Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WSConnManagementFunction.Arn}/invocations
+  Deployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - ConnectRoute
+      - DefaultRoute
+      - UploadVideoRoute
+      - ExportVideoRoute
+      - DisconnectRoute
+    Properties:
+      ApiId: !Ref SyndicateWebSocket
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: Prod
+      Description: Prod Stage
+      DeploymentId: !Ref Deployment
+      ApiId: !Ref SyndicateWebSocket
+  WSConnManagementPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SyndicateWebSocket
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WSConnManagementFunction
+      Principal: apigateway.amazonaws.com
+
+  AppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref AppBucketName
+      VersioningConfiguration:
+        Status: Enabled
+      AccessControl: PublicRead
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - '*'
+            ExposedHeaders:
+              - ETAG
+            MaxAge: 3600
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 10240
+      Architectures:
+        - x86_64
+      Timeout: 900
+      # Environment:
+      #   Variables:
+      #     PGHOST: # RDS PostgreSQL instance endpoint
+      #     PGPORT: # Port number for PostgreSQL
+      #     PGUSER: # Replace with appropriate username for your database
+      #     PGPASSWORD: # Replace with appropriate password for your database
+      #     PGDATABASE:
+      Policies:
+        - AmazonRDSFullAccess
+        - AWSLambdaBasicExecutionRole
+      Events:
+        ProxyEvent:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: any
+            RestApiId: !Ref AuthApi
+    Metadata:
+      DockerTag: nodejs16.x-v1
+      DockerContext: ./
+      Dockerfile: functions/auth/Dockerfile
+
+  # SimpleQueue:
+  #   Type: AWS::SQS::Queue
+  #   Properties:
+  #     QueueName: 'trigger-videoexport'
+
+Outputs:
+  WebSocketURI:
+    Description: 'The WSS Protocol URI to connect to'
+    Value:
+      !Join [
+        '',
+        [
+          'wss://',
+          !Ref SyndicateWebSocket,
+          '.execute-api.',
+          !Ref 'AWS::Region',
+          '.amazonaws.com/',
+          !Ref Stage,
+        ],
+      ]
+  AuthApi:
+    Description: 'API Gateway endpoint URL for Prod stage for Auth function'
+    Value: !Sub 'https://${AuthApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/'
+  AuthFunction:
+    Description: 'Auth Lambda Function ARN'
+    Value: !GetAtt AuthFunction.Arn
+  AuthFunctionIamRole:
+    Description: 'Implicit IAM Role created for Auth function'
+    Value: !GetAtt AuthFunctionRole.Arn

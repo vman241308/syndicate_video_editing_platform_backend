@@ -1,0 +1,42 @@
+{
+  "name": "auth-lambda-backend",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "DEV=true npx nodemon"
+  },
+  "dependencies": {
+    "aws-lambda": "^1.0.7",
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.2",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "password-validator": "^5.3.0",
+    "pg": "^8.10.0",
+    "serverless-http": "^3.2.0",
+    "validator": "^13.9.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.114",
+    "@types/bcryptjs": "^2.4.2",
+    "@types/body-parser": "^1.19.2",
+    "@types/cookie-parser": "^1.4.3",
+    "@types/cors": "^2.8.13",
+    "@types/express": "^4.17.17",
+    "@types/jsonwebtoken": "^9.0.1",
+    "@types/node": "^18.16.0",
+    "@types/pg": "^8.6.6",
+    "@types/validator": "^13.7.14",
+    "nodemon": "^2.0.20",
+    "ts-node": "^10.9.1",
+    "typescript": "4.9.5"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

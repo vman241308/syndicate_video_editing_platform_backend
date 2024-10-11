@@ -1,0 +1,6 @@
+boto3
+pydub
+google-cloud-speech
+google-cloud-storage
+srt
+# webvtt-py

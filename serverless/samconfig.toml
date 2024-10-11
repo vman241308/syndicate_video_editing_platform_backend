@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "syndicate-app"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1vmg8lvink8jw"
+s3_prefix = "syndicate-app"
+region = "us-west-2"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "AppBucketName=\"syndicateapp\""
+image_repositories = ["VideoUploadFunction=731034197148.dkr.ecr.us-west-2.amazonaws.com/syndicateapp935d11c6/videouploadfunctione77be8d2repo", "VideoExportFunction=731034197148.dkr.ecr.us-west-2.amazonaws.com/syndicateapp935d11c6/videoexportfunction7b35e1bfrepo"]
